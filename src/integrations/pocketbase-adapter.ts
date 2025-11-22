@@ -124,12 +124,16 @@ const PocketAdapter = {
   },
 
   from(table: string) {
-    const state: any = { table, filters: [] as string[], sort: '', page: 1, perPage: 100, selectFields: '*' };
+    const state: any = { table, filters: [] as string[], sort: '', page: 1, perPage: 100, selectFields: '*', single: false };
 
     const api: any = {
       select(selectFields: string, opts?: any) {
         state.selectFields = selectFields;
         if (opts && opts.count) state.returnCount = true;
+        return api;
+      },
+      single() {
+        state.single = true;
         return api;
       },
       eq(field: string, value: any) {
@@ -149,12 +153,35 @@ const PocketAdapter = {
         state.sort = (opts?.ascending ? '' : '-') + field;
         return api;
       },
+      async insert(values: any | any[]) {
+        try {
+          const postOne = async (payload: any) =>
+            jsonFetch(`/api/collections/${state.table}/records`, { method: 'POST', body: JSON.stringify(payload) });
+
+          let created: any[] = [];
+          if (Array.isArray(values)) {
+            // PocketBase doesn't support bulk create in one request; do sequentially
+            for (const v of values) {
+              const res = await postOne(v);
+              created.push(res);
+            }
+          } else {
+            const res = await postOne(values);
+            created = [res];
+          }
+
+          return { data: created, error: null };
+        } catch (err: any) {
+          return { data: null, error: err };
+        }
+      },
       async then(resolve: any, reject: any) {
         try {
           const filter = state.filters.length ? state.filters.join(' && ') : undefined;
           const q = `?page=${state.page}&perPage=${state.perPage}` + (filter ? `&filter=${encodeURIComponent(filter)}` : '') + (state.sort ? `&sort=${encodeURIComponent(state.sort)}` : '');
           const body = await jsonFetch(`/api/collections/${state.table}/records${q}`, { method: 'GET' });
-          const data = body.items || [];
+          const items = body.items || [];
+          const data = state.single ? (items[0] ?? null) : items;
           const result: any = { data, error: null };
           if (typeof body.totalItems !== 'undefined') result.count = body.totalItems;
           resolve(result);

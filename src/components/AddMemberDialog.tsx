@@ -65,7 +65,7 @@ export default function AddMemberDialog({ departmentCode, onCreated }: AddMember
         passwordConfirm: values.confirm,
       };
 
-      const { error } = await supabase.from("users").insert(payload);
+      const { error } = await supabase.from("profiles").insert(payload);
       if (error) throw error;
 
       toast({ title: "Member added", description: `${values.name} has been created.` });

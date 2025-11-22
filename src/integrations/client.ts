@@ -2,45 +2,39 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import PocketAdapter from './pocketbase-adapter';
+import ApiAdapter from './api-adapter';
 
 const SUPABASE_URL = (import.meta as any).env.VITE_SUPABASE_URL ?? "";
 const SUPABASE_PUBLISHABLE_KEY = (import.meta as any).env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
 const USE_POCKETBASE = (import.meta as any).env.VITE_USE_POCKETBASE === '1' || (import.meta as any).env.VITE_USE_POCKETBASE === 'true';
+const API_URL = (import.meta as any).env.VITE_API_URL ?? "";
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/client";
 
 let supabase: any;
 
-if (USE_POCKETBASE) {
-  // Use the PocketBase adapter when requested via env var.
-  // We import it as an ESM module so Vite doesn't emit `require()` into the browser bundle.
-  supabase = PocketAdapter;
-} else if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  // Don't throw during module import — log a clear warning and export a minimal stub.
-  // This prevents the app from crashing immediately so we can see runtime errors in the console.
-  console.warn(
-    "Supabase env vars missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your .env file or environment."
-  );
-
-  supabase = {
-    auth: {
-      getSession: async () => ({ data: { session: null } }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-      signInWithPassword: async () => ({ error: new Error("Supabase not configured") }),
-      signUp: async () => ({ error: new Error("Supabase not configured") }),
-      signOut: async () => ({ error: new Error("Supabase not configured") }),
-    },
-    from: () => ({ select: async () => ({ data: null, error: new Error("Supabase not configured") }) }),
-  };
+if (API_URL) {
+  // Use custom Node+SQLite API when configured
+  supabase = ApiAdapter;
 } else {
-  supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: {
-      storage: localStorage,
-      persistSession: true,
-      autoRefreshToken: true,
+  const shouldUsePocketBase = USE_POCKETBASE || (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY);
+
+  if (shouldUsePocketBase) {
+    // Prefer the PocketBase (SQLite) adapter if explicitly requested or if Supabase isn't configured
+    supabase = PocketAdapter;
+    if (!USE_POCKETBASE && (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY)) {
+      console.info("Using PocketBase adapter because Supabase env vars are not set.");
     }
-  });
+  } else {
+    supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        storage: localStorage,
+        persistSession: true,
+        autoRefreshToken: true,
+      }
+    });
+  }
 }
 
 export { supabase };

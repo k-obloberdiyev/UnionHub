@@ -3,40 +3,14 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { tasks as localTasks } from "@/data/tasks";
-
-const departments = [
-  { id: 1, name: "Education", emoji: "📚" },
-  { id: 2, name: "Social Events", emoji: "🎉" },
-  { id: 3, name: "International Relations", emoji: "🌍" },
-  { id: 4, name: "Media", emoji: "📸" },
-  { id: 5, name: "Sports", emoji: "⚽" },
-  { id: 6, name: "Social Engagement", emoji: "🤝" },
-  { id: 7, name: "IT", emoji: "💻" },
-];
-
-function computeMetrics(deptId: number) {
-  const now = new Date();
-  const tasks = localTasks.filter((t) => String(t.department_code) === String(deptId));
-  const total = tasks.length;
-  const completed = tasks.filter((t) => t.status === "completed").length;
-  const inProgress = tasks.filter((t) => t.status === "in-progress").length;
-  const pending = tasks.filter((t) => t.status === "pending").length;
-  const overdueOpen = tasks.filter((t) => new Date(t.deadline) < now && t.status !== "completed").length;
-  const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const credibility = Math.max(0, 100 - overdueOpen * 10);
-  const dueNext7 = tasks.filter((t) => {
-    const d = new Date(t.deadline);
-    const diff = (d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    return diff >= 0 && diff <= 7;
-  }).length;
-  return { total, completed, inProgress, pending, overdueOpen, progress, credibility, dueNext7 };
-}
+import { departments } from "@/data/departments";
+import { computeDepartmentMetrics } from "@/lib/departmentMetrics";
 
 export default function Evaluation() {
   const rows = useMemo(() => {
     return departments.map((d) => ({
       ...d,
-      ...computeMetrics(d.id),
+      ...computeDepartmentMetrics(localTasks, d.id),
     }));
   }, []);
 

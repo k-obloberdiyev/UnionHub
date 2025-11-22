@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Users, TrendingUp, CheckCircle2, Clock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/hooks/useAuth";
+import { departments } from "@/data/departments";
+import { tasks } from "@/data/tasks";
+import { computeDepartmentProgress } from "@/lib/departmentMetrics";
+import { Link } from "react-router-dom";
 
 export default function Home() {
   const { user } = useAuth();
@@ -110,34 +114,32 @@ export default function Home() {
         {/** If not logged in, this section is hidden from public pages. */}
         {user ? (
           <Card>
-          <CardHeader>
-            <CardTitle>Department Progress Overview</CardTitle>
-            <CardDescription>Current quarter goals completion</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {[
-                { name: "Education", progress: 75, emoji: "📚" },
-                { name: "Social Events", progress: 90, emoji: "🎉" },
-                { name: "International Relations", progress: 60, emoji: "🌍" },
-                { name: "Media", progress: 85, emoji: "📸" },
-                { name: "Sports", progress: 70, emoji: "⚽" },
-                { name: "Social Engagement", progress: 80, emoji: "🤝" },
-                { name: "IT", progress: 95, emoji: "💻" },
-              ].map((dept) => (
-                <div key={dept.name} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{dept.emoji}</span>
-                      <span className="font-medium">{dept.name}</span>
+            <CardHeader>
+              <CardTitle>Department Progress Overview</CardTitle>
+              <CardDescription>Current quarter goals completion</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {departments.map((dept) => {
+                  const progress = computeDepartmentProgress(tasks, dept.id);
+                  return (
+                    <div key={dept.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{dept.emoji}</span>
+                          <span className="font-medium">{dept.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-muted-foreground">{progress}%</span>
+                          <Link to="/evaluation" className="text-sm text-primary hover:underline">View details</Link>
+                        </div>
+                      </div>
+                      <Progress value={progress} className="h-2" />
                     </div>
-                    <span className="text-sm text-muted-foreground">{dept.progress}%</span>
-                  </div>
-                  <Progress value={dept.progress} className="h-2" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
+                  );
+                })}
+              </div>
+            </CardContent>
           </Card>
         ) : null}
       </div>
