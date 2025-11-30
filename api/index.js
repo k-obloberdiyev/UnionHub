@@ -49,6 +49,7 @@ function adminMiddleware(req, res, next) {
 async function initializeDatabase() {
   const { db } = await connectToDatabase();
   
+  // Check if admin user exists, if not create it
   const existingAdmin = await ProfileModel.findByEmail(db, 'kamolbekobloberdiyev1@gmail.com');
   if (!existingAdmin) {
     await ProfileModel.create(db, {
@@ -66,6 +67,25 @@ async function initializeDatabase() {
       password: 'admin123'
     });
     console.log('Admin user created');
+  }
+  
+  // Check if Baxodir's account exists, if not create it
+  const existingBaxodir = await ProfileModel.findByEmail(db, 'baxodirabdumalikov.st@gmail.com');
+  if (!existingBaxodir) {
+    await ProfileModel.create(db, {
+      email: 'baxodirabdumalikov.st@gmail.com',
+      name: 'Baxodir Abdumalikov',
+      first_name: 'Baxodir',
+      last_name: 'Abdumalikov',
+      department_code: 1,
+      class_name: '10-01',
+      biography: 'Student account',
+      avatar_url: null,
+      coins: 0,
+      credibility_score: 100,
+      password: 'baxodir123'
+    });
+    console.log('Baxodir user created');
   }
   
   const existingTasks = await TaskModel.findAll(db);
