@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/client";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
@@ -22,58 +21,74 @@ export default function Login() {
 
   // Check if already logged in
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate("/");
+    // Check if user is already logged in with JWT
+    const checkAuth = () => {
+      const token = localStorage.getItem('auth_token');
+      const user = localStorage.getItem('user');
+      if (token && user) {
+        navigate("/admin");
       }
     };
-    checkSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/");
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    checkAuth();
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('=== LOGIN FORM SUBMITTED ===');
+    console.log('Email:', email);
+    console.log('Password length:', password.length);
+    console.log('API_URL available:', !!(import.meta as any).env.VITE_API_URL);
+    
     setLoading(true);
 
     try {
       // Validate inputs
+      console.log('Validating inputs...');
       emailSchema.parse(email);
       passwordSchema.parse(password);
+      console.log('Input validation passed');
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Use our backend API for authentication
+      const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
+      console.log('API_URL:', API_URL);
+      if (!API_URL) {
+        throw new Error("API_URL is not configured");
+      }
+
+      console.log('Making API call to:', `${API_URL.replace(/\/$/, "")}/auth/login`);
+      const res = await fetch(`${API_URL.replace(/\/$/, "")}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (error) {
-        if (error.message.includes("Invalid login credentials")) {
-          toast({
-            title: "Login failed",
-            description: "Invalid email or password. Please try again.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully logged in.",
-        });
+      console.log('Login response status:', res.status);
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        console.log('Login error response:', body);
+        throw new Error(body?.error || res.statusText);
       }
+
+      const { token, user } = await res.json();
+      console.log('Login successful, received token and user');
+
+      // Store the token in localStorage for future requests
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      toast({
+        title: "Welcome back!",
+        description: "You've successfully logged in.",
+      });
+
+      // Navigate to admin page
+      console.log('Navigating to /admin');
+      navigate("/admin");
     } catch (error) {
+      console.error('=== LOGIN ERROR ===', error);
       if (error instanceof z.ZodError) {
         toast({
           title: "Validation error",
@@ -82,8 +97,8 @@ export default function Login() {
         });
       } else {
         toast({
-          title: "Error",
-          description: "Something went wrong. Please try again.",
+          title: "Login failed",
+          description: error instanceof Error ? error.message : "Invalid email or password. Please try again.",
           variant: "destructive",
         });
       }
@@ -127,7 +142,7 @@ export default function Login() {
               />
               <p className="text-xs text-muted-foreground">Must be at least 6 characters</p>
             </div>
-            <Button className="w-full" type="submit" disabled={loading}>
+            <Button className="w-full" type="submit" disabled={loading} onClick={() => console.log('Button clicked!')}>
               {loading ? "Please wait..." : "Sign In"}
             </Button>
           </form>
