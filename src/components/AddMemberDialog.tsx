@@ -53,8 +53,14 @@ export default function AddMemberDialog({ departmentCode, onCreated }: AddMember
 
   const onSubmit = async (values: z.infer<typeof memberSchema>) => {
     try {
+      const nameParts = values.name.trim().split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
       const payload: any = {
         name: values.name,
+        first_name: firstName,
+        last_name: lastName,
         email: values.email,
         emailVisibility: true,
         avatar: values.avatar || null,

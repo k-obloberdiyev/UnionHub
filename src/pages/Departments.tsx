@@ -6,16 +6,40 @@ import { Progress } from "@/components/ui/progress";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { members as localMembers } from "@/data/members";
-import { tasks as localTasks } from "@/data/tasks";
 import { CheckCircle2, Circle, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { departments } from "@/data/departments";
 import { computeDepartmentProgress } from "@/lib/departmentMetrics";
+import { supabase } from "@/integrations/client";
+
+interface AdminTask {
+  id: string;
+  title: string;
+  status: string;
+  coins: number;
+  deadline: string;
+  department_code: number;
+  description: string;
+  progress?: {
+    current: number;
+    target: number;
+    unit?: string;
+  };
+  evaluation?: {
+    completed: boolean;
+    score?: number;
+    feedback?: string;
+    evaluated_at?: string;
+    evaluated_by?: string;
+  };
+}
 
 export default function Departments() {
   const { user } = useAuth();
   const [usersList, setUsersList] = useState<any[]>(localMembers);
+  const [tasks, setTasks] = useState<AdminTask[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,11 +48,52 @@ export default function Departments() {
     setLoadingUsers(false);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTasks = async () => {
+      setLoadingTasks(true);
+      try {
+        const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
+        if (!API_URL) return;
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+
+        const res = await fetch(`${API_URL.replace(/\/$/, "")}/admin/tasks`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setTasks(data || []);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load tasks:", e);
+      } finally {
+        if (!cancelled) setLoadingTasks(false);
+      }
+    };
+
+    loadTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const getMembersForDept = (deptId: number) => {
     return usersList.filter((u) => String(u.department_code) === String(deptId));
   };
   const getTasksForDept = (deptId: number) => {
-    return localTasks.filter((t) => String(t.department_code) === String(deptId));
+    return tasks.filter((t) => String(t.department_code) === String(deptId));
   };
 
   return (
@@ -72,11 +137,11 @@ export default function Departments() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Progress</span>
                         <span className="font-medium flex items-center gap-3">
-                          {computeDepartmentProgress(localTasks, dept.id)}%
+                          {computeDepartmentProgress(tasks, dept.id)}%
                           <Link to="/evaluation" className="text-primary hover:underline">View evaluation</Link>
                         </span>
                       </div>
-                      <Progress value={computeDepartmentProgress(localTasks, dept.id)} className="h-2" />
+                      <Progress value={computeDepartmentProgress(tasks, dept.id)} className="h-2" />
                     </div>
 
                     <div className="space-y-3">

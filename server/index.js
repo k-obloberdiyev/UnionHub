@@ -4,7 +4,8 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
-const bcrypt = require('bcryptjs');
+const { connectToDatabase } = require('./lib/mongodb');
+const { ProfileModel, TaskModel } = require('./models/models');
 
 // Temporarily disable database connection for testing
 // const connectDB = require('./config/database');
@@ -61,260 +62,247 @@ function adminMiddleware(req, res, next) {
   next();
 }
 
-// File-based persistence
-const DATA_FILE = path.join(__dirname, 'data.json');
-
-// Load data from file or create initial data
-function loadData() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.log('No existing data file, creating initial data');
+// Initialize MongoDB data
+async function initializeDatabase() {
+  const { db } = await connectToDatabase();
+  
+  // Check if admin user exists, if not create it
+  const existingAdmin = await ProfileModel.findByEmail(db, 'kamolbekobloberdiyev1@gmail.com');
+  if (!existingAdmin) {
+    await ProfileModel.create(db, {
+      id: 'admin-fallback',
+      email: 'kamolbekobloberdiyev1@gmail.com',
+      first_name: 'Kamolbek',
+      last_name: 'Obloberdiyev',
+      name: 'Kamolbek Obloberdiyev',
+      department_code: null,
+      class_name: 'Admin',
+      biography: 'System Administrator',
+      avatar_url: null,
+      coins: 1000,
+      credibility_score: 100,
+      password: 'admin123'
+    });
+    console.log('Admin user created');
   }
   
-  // Return initial data if file doesn't exist
-  return {
-    profiles: [
-      {
-        id: 'admin-fallback',
-        email: 'kamolbekobloberdiyev1@gmail.com',
-        first_name: 'Kamolbek',
-        last_name: 'Obloberdiyev',
-        name: 'Kamolbek Obloberdiyev',
-        department_code: null,
-        class_name: 'Admin',
-        biography: 'System Administrator',
-        avatar_url: null,
-        coins: 1000,
-        credibility_score: 100,
-        password: 'admin123',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ],
-    tasks: [
-      {
-        id: 'task-1',
-        title: 'Sample Task 1',
-        status: 'pending',
-        coins: 100,
-        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        department_code: 1,
-        description: 'This is a sample task for testing',
-        progress: { current: 25, target: 100, unit: '%' },
-        evaluation: { completed: false, score: null, feedback: '' },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ]
-  };
-}
-
-// Save data to file
-function saveData(data) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Error saving data:', error);
+  // Check if sample task exists, if not create it
+  const existingTasks = await TaskModel.findAll(db);
+  if (existingTasks.length === 0) {
+    await TaskModel.create(db, {
+      id: 'task-1',
+      title: 'Sample Task 1',
+      status: 'pending',
+      coins: 100,
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      department_code: 1,
+      description: 'This is a sample task for testing',
+      progress: { current: 25, target: 100, unit: '%' },
+      evaluation: { completed: false, score: null, feedback: '' }
+    });
+    console.log('Sample task created');
   }
 }
 
-// Initialize data
-let appData = loadData();
-let mockProfiles = appData.profiles;
-let mockTasks = appData.tasks;
+// Initialize database on startup
+initializeDatabase().catch(console.error);
 
-app.post('/auth/login', (req, res) => {
+app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   
-  // Check if user exists in profiles
-  const user = mockProfiles.find(profile => profile.email === email);
-  
-  if (!user) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+  try {
+    const { db } = await connectToDatabase();
+    
+    // Check if user exists in profiles
+    const user = await ProfileModel.findByEmail(db, email);
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    
+    // Get user with password for authentication
+    const userWithPassword = await db.collection('profiles').findOne({ email: email.toLowerCase() });
+    
+    // Verify password
+    if (userWithPassword.password !== password) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    
+    const token = signToken({ 
+      id: user.id, 
+      email: user.email 
+    });
+    
+    return res.json({ 
+      token, 
+      user: { id: user.id, email: user.email, name: user.name }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
-  
-  // Verify password (in production, use bcrypt for hashed passwords)
-  if (user.password !== password) {
-    return res.status(401).json({ error: 'Invalid email or password' });
-  }
-  
-  const token = signToken({ 
-    id: user.id, 
-    email: user.email 
-  });
-  
-  return res.json({ 
-    token, 
-    user: { id: user.id, email: user.email, name: user.name }
-  });
 });
 
 // --- Admin: profile management ---
 // List all profiles (admin only)
-app.get('/admin/profiles', authMiddleware, adminMiddleware, (req, res) => {
-  return res.json(mockProfiles);
+app.get('/admin/profiles', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const profiles = await ProfileModel.findAll(db);
+    return res.json(profiles);
+  } catch (error) {
+    console.error('Error fetching profiles:', error);
+    return res.status(500).json({ error: 'Failed to fetch profiles' });
+  }
 });
 
 // Edit a profile (admin only)
-app.patch('/admin/profiles/:id', authMiddleware, adminMiddleware, (req, res) => {
-  const profileIndex = mockProfiles.findIndex(profile => profile.id === req.params.id);
-  
-  if (profileIndex === -1) {
-    return res.status(404).json({ error: 'Profile not found' });
+app.patch('/admin/profiles/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const updatedProfile = await ProfileModel.update(db, req.params.id, req.body);
+    
+    if (!updatedProfile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+    
+    return res.json(updatedProfile);
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    return res.status(500).json({ error: 'Failed to update profile' });
   }
-  
-  // Update the profile in the in-memory store
-  mockProfiles[profileIndex] = {
-    ...mockProfiles[profileIndex],
-    ...req.body,
-    updated_at: new Date().toISOString()
-  };
-  
-  return res.json(mockProfiles[profileIndex]);
 });
 
-app.get('/profiles/:id', authMiddleware, (req, res) => {
-  const profile = mockProfiles.find(p => p.id === req.params.id);
-  if (!profile) {
-    return res.status(404).json({ error: 'Profile not found' });
+app.get('/profiles/:id', authMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const profile = await ProfileModel.findById(db, req.params.id);
+    
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+    
+    return res.json(profile);
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    return res.status(500).json({ error: 'Failed to fetch profile' });
   }
-  return res.json(profile);
 });
 
-app.post('/profiles', authMiddleware, (req, res) => {
-  const newProfile = {
-    id: require('crypto').randomUUID(),
-    email: req.body.email,
-    name: req.body.name,
-    first_name: req.body.first_name,
-    last_name: req.body.last_name,
-    department_code: req.body.department_code,
-    class_name: req.body.class_name,
-    biography: req.body.biography || '',
-    avatar_url: null,
-    coins: 0,
-    credibility_score: 100,
-    password: req.body.password || 'password123', // Default password for demo
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
-  // Add to in-memory store
-  mockProfiles.push(newProfile);
-  
-  // Save to file
-  saveData({ profiles: mockProfiles, tasks: mockTasks });
-  
-  // Return profile without password for security
-  const { password, ...profileWithoutPassword } = newProfile;
-  
-  return res.status(201).json(profileWithoutPassword);
+app.post('/profiles', authMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    
+    // Check if email already exists
+    const existingProfile = await ProfileModel.findByEmail(db, req.body.email);
+    if (existingProfile) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+    
+    const newProfile = await ProfileModel.create(db, req.body);
+    return res.status(201).json(newProfile);
+  } catch (error) {
+    console.error('Error creating profile:', error);
+    return res.status(500).json({ error: 'Failed to create profile' });
+  }
 });
 
 // --- Admin: task management ---
 // List all tasks (admin only)
-app.get('/admin/tasks', authMiddleware, adminMiddleware, (req, res) => {
-  return res.json(mockTasks);
+app.get('/admin/tasks', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const tasks = await TaskModel.findAll(db);
+    return res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    return res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
 });
 
 // Create a new task (admin only)
-app.post('/admin/tasks', authMiddleware, adminMiddleware, (req, res) => {
-  const task = {
-    id: require('crypto').randomUUID(),
-    title: req.body.title || 'New Task',
-    status: req.body.status || 'pending',
-    coins: Number(req.body.coins || 0),
-    deadline: req.body.deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    department_code: Number(req.body.department_code || 1),
-    description: req.body.description || '',
-    progress: req.body.progress || { current: 0, target: 100, unit: '%' },
-    evaluation: req.body.evaluation || { completed: false, score: null, feedback: '' },
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-  
-  // Add to in-memory store
-  mockTasks.push(task);
-  
-  // Save to file
-  saveData({ profiles: mockProfiles, tasks: mockTasks });
-  
-  return res.status(201).json(task);
+app.post('/admin/tasks', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const newTask = await TaskModel.create(db, req.body);
+    return res.status(201).json(newTask);
+  } catch (error) {
+    console.error('Error creating task:', error);
+    return res.status(500).json({ error: 'Failed to create task' });
+  }
 });
 
 // Update a task (admin only)
-app.patch('/admin/tasks/:id', authMiddleware, adminMiddleware, (req, res) => {
-  const taskIndex = mockTasks.findIndex(task => task.id === req.params.id);
-  
-  if (taskIndex === -1) {
-    return res.status(404).json({ error: 'Task not found' });
+app.patch('/admin/tasks/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    const updatedTask = await TaskModel.update(db, req.params.id, req.body);
+    
+    if (!updatedTask) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    return res.json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    return res.status(500).json({ error: 'Failed to update task' });
   }
-  
-  // Update the task in the in-memory store
-  mockTasks[taskIndex] = {
-    ...mockTasks[taskIndex],
-    ...req.body,
-    updated_at: new Date().toISOString()
-  };
-  
-  // Save to file
-  saveData({ profiles: mockProfiles, tasks: mockTasks });
-  
-  return res.json(mockTasks[taskIndex]);
 });
 
 // Delete a task (admin only)
-app.delete('/admin/tasks/:id', authMiddleware, adminMiddleware, (req, res) => {
-  const taskIndex = mockTasks.findIndex(task => task.id === req.params.id);
-  
-  if (taskIndex === -1) {
-    return res.status(404).json({ error: 'Task not found' });
+app.delete('/admin/tasks/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    
+    // Get task before deletion for response
+    const task = await TaskModel.findById(db, req.params.id);
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    const deleted = await TaskModel.delete(db, req.params.id);
+    
+    if (!deleted) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    return res.json({ 
+      message: 'Task deleted successfully',
+      id: req.params.id,
+      deleted: true,
+      task: task
+    });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    return res.status(500).json({ error: 'Failed to delete task' });
   }
-  
-  // Remove the task from the in-memory store
-  const deletedTask = mockTasks.splice(taskIndex, 1)[0];
-  
-  // Save to file
-  saveData({ profiles: mockProfiles, tasks: mockTasks });
-  
-  return res.json({ 
-    message: 'Task deleted successfully',
-    id: req.params.id,
-    deleted: true,
-    task: deletedTask
-  });
 });
 
 // Delete task evaluation (admin only)
-app.delete('/admin/tasks/:id/evaluation', authMiddleware, adminMiddleware, (req, res) => {
-  const taskIndex = mockTasks.findIndex(task => task.id === req.params.id);
-  
-  if (taskIndex === -1) {
-    return res.status(404).json({ error: 'Task not found' });
+app.delete('/admin/tasks/:id/evaluation', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { db } = await connectToDatabase();
+    
+    const updatedTask = await TaskModel.update(db, req.params.id, {
+      evaluation: { completed: false, score: null, feedback: '' },
+      status: 'completed'
+    });
+    
+    if (!updatedTask) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    
+    return res.json({ 
+      message: 'Evaluation deleted successfully',
+      id: req.params.id,
+      evaluation: { completed: false, score: null, feedback: '' },
+      status: 'completed'
+    });
+  } catch (error) {
+    console.error('Error deleting evaluation:', error);
+    return res.status(500).json({ error: 'Failed to delete evaluation' });
   }
-  
-  // Remove evaluation from the task in the in-memory store
-  mockTasks[taskIndex] = {
-    ...mockTasks[taskIndex],
-    evaluation: { completed: false, score: null, feedback: '' },
-    status: 'completed', // Reset status to completed
-    updated_at: new Date().toISOString()
-  };
-  
-  // Save to file
-  saveData({ profiles: mockProfiles, tasks: mockTasks });
-  
-  return res.json({ 
-    message: 'Evaluation deleted successfully',
-    id: req.params.id,
-    evaluation: { completed: false, score: null, feedback: '' },
-    status: 'completed'
-  });
 });
 
 // Get departments for dropdown

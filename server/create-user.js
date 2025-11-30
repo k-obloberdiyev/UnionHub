@@ -12,7 +12,9 @@ if (!emailArg || !passwordArg) {
 const id = crypto.randomUUID();
 const email = emailArg;
 const passwordHash = bcrypt.hashSync(passwordArg, 10);
-const name = nameArg || "Admin User";
+const fullName = nameArg || "Admin User";
+const [firstName, ...restNames] = fullName.trim().split(/\s+/);
+const lastName = restNames.length ? restNames.join(" ") : null;
 const createdAt = new Date().toISOString();
 const updatedAt = createdAt;
 
@@ -21,13 +23,13 @@ try {
     id,
     email,
     password_hash: passwordHash,
-    first_name: null,
-    last_name: null,
+    first_name: firstName || null,
+    last_name: lastName,
     department_id: null,
     avatar_url: null,
     coins: 0,
     credibility_score: 0,
-    name,
+    name: fullName,
     class_name: null,
     biography: "",
     department_code: null,

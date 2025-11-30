@@ -7,12 +7,79 @@ import { Calendar, Users, TrendingUp, CheckCircle2, Clock } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useAuth } from "@/hooks/useAuth";
 import { departments } from "@/data/departments";
-import { tasks } from "@/data/tasks";
 import { computeDepartmentProgress } from "@/lib/departmentMetrics";
 import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/client";
+
+interface AdminTask {
+  id: string;
+  title: string;
+  status: string;
+  coins: number;
+  deadline: string;
+  department_code: number;
+  description: string;
+  progress?: {
+    current: number;
+    target: number;
+    unit?: string;
+  };
+  evaluation?: {
+    completed: boolean;
+    score?: number;
+    feedback?: string;
+    evaluated_at?: string;
+    evaluated_by?: string;
+  };
+}
 
 export default function Home() {
   const { user } = useAuth();
+  const [tasks, setTasks] = useState<AdminTask[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTasks = async () => {
+      setLoading(true);
+      try {
+        const API_URL = (import.meta as any).env.VITE_API_URL as string | undefined;
+        if (!API_URL) return;
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+
+        const res = await fetch(`${API_URL.replace(/\/$/, "")}/admin/tasks`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setTasks(data || []);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load tasks:", e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const recentActivities = [
     { id: 1, title: "Sports Team Meeting", time: "2 hours ago", type: "event", status: "completed" },
     { id: 2, title: "New Media Post Published", time: "5 hours ago", type: "news", status: "new" },
