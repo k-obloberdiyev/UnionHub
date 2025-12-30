@@ -1,4 +1,4 @@
-const { isValidObjectId, createObjectId } = require('./mongodb');
+const { isValidObjectId, createObjectId } = require('../lib/mongodb');
 
 class ProfileModel {
   static async collection(db) {

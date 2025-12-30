@@ -47,62 +47,8 @@ function adminMiddleware(req, res, next) {
 
 // Initialize MongoDB data
 async function initializeDatabase() {
-  const { db } = await connectToDatabase();
-  
-  // Check if admin user exists, if not create it
-  const existingAdmin = await ProfileModel.findByEmail(db, 'kamolbekobloberdiyev1@gmail.com');
-  if (!existingAdmin) {
-    await ProfileModel.create(db, {
-      id: 'admin-fallback',
-      email: 'kamolbekobloberdiyev1@gmail.com',
-      first_name: 'Kamolbek',
-      last_name: 'Obloberdiyev',
-      name: 'Kamolbek Obloberdiyev',
-      department_code: null,
-      class_name: 'Admin',
-      biography: 'System Administrator',
-      avatar_url: null,
-      coins: 1000,
-      credibility_score: 100,
-      password: 'admin123'
-    });
-    console.log('Admin user created');
-  }
-  
-  // Check if Baxodir's account exists, if not create it
-  const existingBaxodir = await ProfileModel.findByEmail(db, 'baxodirabdumalikov.st@gmail.com');
-  if (!existingBaxodir) {
-    await ProfileModel.create(db, {
-      email: 'baxodirabdumalikov.st@gmail.com',
-      name: 'Baxodir Abdumalikov',
-      first_name: 'Baxodir',
-      last_name: 'Abdumalikov',
-      department_code: 1,
-      class_name: '10-01',
-      biography: 'Student account',
-      avatar_url: null,
-      coins: 0,
-      credibility_score: 100,
-      password: 'baxodir123'
-    });
-    console.log('Baxodir user created');
-  }
-  
-  const existingTasks = await TaskModel.findAll(db);
-  if (existingTasks.length === 0) {
-    await TaskModel.create(db, {
-      id: 'task-1',
-      title: 'Sample Task 1',
-      status: 'pending',
-      coins: 100,
-      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      department_code: 1,
-      description: 'This is a sample task for testing',
-      progress: { current: 25, target: 100, unit: '%' },
-      evaluation: { completed: false, score: null, feedback: '' }
-    });
-    console.log('Sample task created');
-  }
+  // Database initialization disabled - use proper user registration flow
+  // This function previously created hardcoded test accounts which is a security risk
 }
 
 // Initialize database on startup
